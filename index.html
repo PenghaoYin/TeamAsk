@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TeamAsk · 团队 AI 问答</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="nameGate" class="gate">
+    <div class="gate-card">
+      <div class="brand-mark">✦</div>
+      <p class="eyebrow">TEAMASK / 01</p>
+      <h1>一起问 AI<br><em>协作更快。</em></h1>
+      <p class="gate-copy">输入名字，加入团队 AI 问答空间。</p>
+      <form id="nameForm"><input id="nameInput" maxlength="20" placeholder="你的名字" autofocus /><button>进入聊天室 <span>→</span></button></form>
+      <p class="gate-note">多人可并行提问，消息保存在当前浏览器。</p>
+    </div>
+  </div>
+
+  <main id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="sidebar-top"><div class="logo"><span>✦</span> teamask</div><button id="settingsBtn" class="icon-btn" title="AI 设置">⚙</button></div>
+      <div class="profile"><div id="profileAvatar" class="avatar avatar-me">ME</div><div><strong id="profileName"></strong><small><i class="online-dot"></i>在线</small></div><button id="renameBtn" class="tiny-btn">改名</button></div>
+      <div class="section-head"><span>团队会话</span><button id="newSessionBtn" class="new-btn">＋ 新会话</button></div>
+      <div id="sessionList" class="session-list"></div>
+      <div class="sidebar-bottom"><p>今天的房间</p><div class="room-info"><span class="pulse"></span><span>lobby / public</span></div></div>
+    </aside>
+
+    <section class="chat-panel">
+      <header class="chat-header"><div><p class="eyebrow">TEAM AI ROOM</p><h2>团队一起问 <span>⌁</span></h2></div></header>
+      <div id="messageList" class="messages"></div>
+      <div class="composer-wrap"><div class="ai-toggle"><button id="aiToggle" class="toggle" aria-pressed="true"><span></span></button><span>让 AI 回答</span><small id="modelBadge">GPT-4o-mini</small><button id="modelSettings" class="text-btn">设置</button></div><form id="messageForm" class="composer"><textarea id="messageInput" rows="1" placeholder="说点什么…（Enter 发送，Shift + Enter 换行）"></textarea><button class="send-btn" aria-label="发送">↑</button></form></div>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog"><div class="dialog-head"><div><p class="eyebrow">AI CONFIGURATION</p><h3>连接你的模型</h3></div><button id="closeSettings" class="close-btn">×</button></div><p class="dialog-copy">填写服务地址和接口路径，配置只保存在当前浏览器。</p><label>API 基础地址<div class="endpoint-row"><input id="apiBaseUrl" placeholder="https://api.openai.com/v1" /><select id="apiEndpoint"><option value="/chat/completions">/chat/completions</option><option value="/responses">/responses</option></select></div></label><label>API Key<input id="apiKey" type="password" placeholder="sk-…" /></label><label>模型名<input id="apiModel" placeholder="gpt-4o-mini" /></label><div class="dialog-actions"><button id="clearSettings" class="ghost-btn">清空配置</button><button id="saveSettings" class="primary-btn">保存设置</button></div></dialog>
+  <script src="app.js"></script>
+</body>
+</html>

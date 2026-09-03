@@ -10,8 +10,102 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 function esc(value) {
   return String(value).replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}[char]));
 }
+function formatInline(value) {
+  const code = [];
+  const links = [];
+  let html = String(value).replace(/`([^`\n]+)`/g, (_, content) => {
+    code.push(esc(content));
+    return `\u0001${code.length - 1}\u0002`;
+  });
+  html = html.replace(/\[([^\]]+)]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
+    links.push(`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`);
+    return `\u0003${links.length - 1}\u0004`;
+  });
+  html = esc(html)
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+    .replace(/_([^_\n]+)_/g, '<em>$1</em>');
+  return html
+    .replace(/\u0001(\d+)\u0002/g, (_, index) => `<code>${code[Number(index)]}</code>`)
+    .replace(/\u0003(\d+)\u0004/g, (_, index) => links[Number(index)]);
+}
+
 function formatMessage(value) {
-  return esc(String(value || '').replace(/^(?:[ \t]*\r?\n)+/, '')).replace(/\r?\n/g, '<br>');
+  const lines = String(value || '').replace(/\r\n/g, '\n').replace(/^(?:[ \t]*\n)+/, '').split('\n');
+  const output = [];
+  let paragraph = [];
+  let listType = '';
+  let listItems = [];
+  let codeLines = null;
+  let codeLanguage = '';
+
+  const flushParagraph = () => {
+    if (paragraph.length) output.push(`<p>${paragraph.join('<br>')}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (listItems.length) output.push(`<${listType}>${listItems.map(item => `<li>${item}</li>`).join('')}</${listType}>`);
+    listType = '';
+    listItems = [];
+  };
+  const flushText = () => {
+    flushParagraph();
+    flushList();
+  };
+
+  for (const line of lines) {
+    if (codeLines !== null) {
+      if (/^```\s*$/.test(line)) {
+        output.push(`<pre><code${codeLanguage ? ` data-language="${esc(codeLanguage)}"` : ''}>${esc(codeLines.join('\n'))}</code></pre>`);
+        codeLines = null;
+        codeLanguage = '';
+      } else {
+        codeLines.push(line);
+      }
+      continue;
+    }
+
+    const fence = line.match(/^```\s*([^\s`]*)\s*$/);
+    if (fence) {
+      flushText();
+      codeLines = [];
+      codeLanguage = fence[1];
+      continue;
+    }
+    if (!line.trim()) {
+      flushText();
+      continue;
+    }
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      flushText();
+      const level = heading[1].length;
+      output.push(`<h${level}>${formatInline(heading[2])}</h${level}>`);
+      continue;
+    }
+    const quote = line.match(/^>\s?(.*)$/);
+    if (quote) {
+      flushText();
+      output.push(`<blockquote>${formatInline(quote[1])}</blockquote>`);
+      continue;
+    }
+    const unordered = line.match(/^[-*+]\s+(.+)$/);
+    const ordered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (unordered || ordered) {
+      flushParagraph();
+      const type = unordered ? 'ul' : 'ol';
+      if (listType && listType !== type) flushList();
+      listType = type;
+      listItems.push(formatInline((unordered || ordered)[1]));
+      continue;
+    }
+    flushList();
+    paragraph.push(formatInline(line));
+  }
+  flushText();
+  if (codeLines !== null) output.push(`<pre><code${codeLanguage ? ` data-language="${esc(codeLanguage)}"` : ''}>${esc(codeLines.join('\n'))}</code></pre>`);
+  return output.join('');
 }
 function activeSession() { return state.sessions.find(session => session.id === state.active); }
 

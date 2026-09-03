@@ -1,12 +1,10 @@
 const $ = selector => document.querySelector(selector);
-const legacy = JSON.parse(localStorage.getItem('teamask') || 'null') || {};
 const state = {
   name: '', sessions: [], active: null,
-  config: {baseUrl: '', endpoint: '/chat/completions', model: 'gpt-4o-mini', sessionId: '', configured: false},
+  config: {baseUrl: '', model: 'gpt-4o-mini', sessionId: '', configured: false},
 };
 let aiOn = true;
 let syncing = 0;
-let legacyMigrated = false;
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function esc(value) {
@@ -23,7 +21,6 @@ function acceptShared(data) {
   state.config = data.config || state.config;
   state.active = data.active || state.active;
   if (!activeSession()) state.active = state.sessions[0]?.id || null;
-  localStorage.removeItem('teamask');
   $('#nameGate').classList.toggle('hidden', Boolean(state.name));
   $('#app').classList.toggle('hidden', !state.name);
   if (state.name) render();
@@ -56,27 +53,7 @@ async function loadShared() {
   if (syncing) return;
   syncing += 1;
   try {
-    let data = await apiRequest('/api/state');
-    if (!legacyMigrated) {
-      if (!data.name && legacy.name) {
-        data = await apiRequest('/api/profile', {
-          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: legacy.name, active: legacy.active}),
-        });
-      }
-      if (!data.config.configured && legacy.config?.baseUrl && legacy.config?.key) {
-        data = await apiRequest('/api/config', {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({...legacy.config, initialOnly: true}),
-        });
-      }
-      if (!data.sessions.length && legacy.sessions?.length) {
-        data = await apiRequest('/api/state', {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({action: 'initialize', sessions: legacy.sessions}),
-        });
-      }
-      legacyMigrated = true;
-    }
+    const data = await apiRequest('/api/state');
     acceptShared(data);
   } catch (error) {
     console.error(error);
@@ -131,14 +108,14 @@ function openRecord(sessionId) {
   const session = state.sessions.find(item => item.id === sessionId);
   if (!session) return;
   $('#recordTitle').textContent = session.title + ' · 完整输入输出';
-  const records = session.debugRecords || [];
-  $('#recordList').innerHTML = records.length ? records.map((record, index) => `
+  const record = session.debugRecord;
+  $('#recordList').innerHTML = record ? `
     <article class="record-entry">
-      <div class="record-meta"><strong>调用 ${index + 1}</strong><span>${esc(record.time || '')} · HTTP ${esc(record.response?.status ?? 'ERROR')}</span></div>
+      <div class="record-meta"><strong>最近一次调用</strong><span>${esc(record.time || '')} · HTTP ${esc(record.response?.status ?? 'ERROR')}</span></div>
       <h4>REQUEST</h4><pre>${esc(JSON.stringify(record.request, null, 2))}</pre>
       <h4>RESPONSE</h4><pre>${esc(JSON.stringify(record.response, null, 2))}</pre>
     </article>
-  `).join('') : '<p class="record-empty">暂无 API 调试记录；新请求完成后会显示在这里。</p>';
+  ` : '<p class="record-empty">暂无 API 调试记录；新请求完成后会显示在这里。</p>';
   $('#recordDialog').showModal();
 }
 
@@ -161,7 +138,7 @@ async function askAI() {
   if (!aiOn) return;
   const pending = appendMessage({
     author: config.model || 'AI', initials: 'AI', avatar: 'avatar-c', kind: 'ai',
-    model: config.model || 'AI', pending: true, time: now(),
+    model: config.model || 'AI', pending: true, time: now(), includeInAi: true,
   });
   if (!config.configured) {
     pending.pending = false;
@@ -171,11 +148,11 @@ async function askAI() {
     return;
   }
   try {
-    const messages = session.messages.filter(message => !message.pending).map(message => ({
+    const messages = session.messages.filter(message => !message.pending && message.includeInAi === true).map(message => ({
       role: message.kind === 'ai' ? 'assistant' : 'user',
       content: message.kind === 'ai' ? message.text : `[User: ${message.author}]\n${message.text}`,
     }));
-    const body = config.endpoint === '/responses' ? {input: messages} : {messages};
+    const body = {messages};
     const data = await apiRequest('/api/ai', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({body, sessionId: session.id, messageId: pending.id}),
@@ -210,7 +187,7 @@ $('#messageForm').onsubmit = event => {
   const input = $('#messageInput');
   const text = input.value.trim();
   if (!text) return;
-  appendMessage({author: state.name, initials: state.name.slice(0, 2), avatar: 'avatar-me', text, time: now()});
+  appendMessage({author: state.name, initials: state.name.slice(0, 2), avatar: 'avatar-me', text, time: now(), includeInAi: aiOn});
   input.value = '';
   input.style.height = 'auto';
   askAI();
@@ -227,7 +204,6 @@ $('#aiToggle').onclick = () => {
 
 function openSettings() {
   $('#apiBaseUrl').value = state.config.baseUrl;
-  $('#apiEndpoint').value = state.config.endpoint;
   $('#apiKey').value = '';
   $('#apiKey').placeholder = state.config.hasKey ? '已保存在部署机，留空则不修改' : 'sk-…';
   $('#apiModel').value = state.config.model;
@@ -239,7 +215,7 @@ $('#modelSettings').onclick = openSettings;
 $('#closeSettings').onclick = () => $('#settingsDialog').close();
 $('#saveSettings').onclick = async () => {
   const data = await postShared('/api/config', {
-    baseUrl: $('#apiBaseUrl').value.trim(), endpoint: $('#apiEndpoint').value,
+    baseUrl: $('#apiBaseUrl').value.trim(),
     key: $('#apiKey').value.trim(), model: $('#apiModel').value.trim() || 'gpt-4o-mini',
     sessionId: $('#apiSessionId').value.trim(),
   });
@@ -247,7 +223,6 @@ $('#saveSettings').onclick = async () => {
 };
 $('#clearSettings').onclick = () => {
   $('#apiBaseUrl').value = '';
-  $('#apiEndpoint').value = '/chat/completions';
   $('#apiKey').value = '';
   $('#apiModel').value = 'gpt-4o-mini';
   $('#apiSessionId').value = '';

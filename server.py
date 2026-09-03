@@ -21,7 +21,7 @@ CLIENT_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
 
 
 def default_config():
-    return {"baseUrl": "", "endpoint": "/chat/completions", "key": "", "model": "gpt-4o-mini", "sessionId": ""}
+    return {"baseUrl": "", "key": "", "model": "gpt-4o-mini", "sessionId": ""}
 
 
 def load_state():
@@ -56,10 +56,7 @@ def public_state(state, client_id):
 
 def apply_action(state, request, client_id):
     action = request.get("action")
-    if action == "initialize":
-        if not state["sessions"]:
-            state["sessions"] = request.get("sessions", [])
-    elif action == "create_session":
+    if action == "create_session":
         session = request["session"]
         if not any(item.get("id") == session.get("id") for item in state["sessions"]):
             state["sessions"].insert(0, session)
@@ -96,12 +93,12 @@ def save_debug_record(session_id, message_id, request_data, response_data):
         session = next((item for item in state["sessions"] if item.get("id") == session_id), None)
         if session is None:
             return
-        session.setdefault("debugRecords", []).append({
+        session["debugRecord"] = {
             "messageId": message_id,
             "time": datetime.now(timezone.utc).isoformat(),
             "request": request_data,
             "response": response_data,
-        })
+        }
         save_state(state)
 
 
@@ -156,18 +153,13 @@ class Handler(SimpleHTTPRequestHandler):
                         raise ValueError("profile value is required")
                 else:
                     config = state["config"]
-                    if not (request.get("initialOnly") and config.get("baseUrl") and config.get("key")):
-                        endpoint = request.get("endpoint", "/chat/completions")
-                        if endpoint not in {"/chat/completions", "/responses"}:
-                            raise ValueError("unsupported API endpoint")
-                        config.update({
-                            "baseUrl": str(request.get("baseUrl", "")).strip(),
-                            "endpoint": endpoint,
-                            "model": str(request.get("model", "")).strip() or "gpt-4o-mini",
-                            "sessionId": str(request.get("sessionId", "")).strip(),
-                        })
-                        if str(request.get("key", "")).strip():
-                            config["key"] = str(request["key"]).strip()
+                    config.update({
+                        "baseUrl": str(request.get("baseUrl", "")).strip(),
+                        "model": str(request.get("model", "")).strip() or "gpt-4o-mini",
+                        "sessionId": str(request.get("sessionId", "")).strip(),
+                    })
+                    if str(request.get("key", "")).strip():
+                        config["key"] = str(request["key"]).strip()
                 save_state(state)
                 response = public_state(state, client_id)
             self.send_json(200, response, client_id)
@@ -194,7 +186,7 @@ class Handler(SimpleHTTPRequestHandler):
             headers = {"Content-Type": "application/json", "Authorization": "Bearer " + config["key"]}
             if config.get("sessionId"):
                 headers["X-Session-ID"] = config["sessionId"]
-            url = config["baseUrl"].rstrip("/") + config["endpoint"]
+            url = config["baseUrl"].rstrip("/") + "/chat/completions"
             request_data = {
                 "method": "POST",
                 "url": url,

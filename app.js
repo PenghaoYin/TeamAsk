@@ -5,6 +5,7 @@ const state = {
 };
 let aiOn = true;
 let syncing = 0;
+let renderedSessionId = null;
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function esc(value) {
@@ -110,6 +111,7 @@ function formatMessage(value) {
 function activeSession() { return state.sessions.find(session => session.id === state.active); }
 
 function acceptShared(data) {
+  const previousState = JSON.stringify(state);
   state.name = data.name || '';
   state.sessions = Array.isArray(data.sessions) ? data.sessions : [];
   state.config = data.config || state.config;
@@ -117,7 +119,7 @@ function acceptShared(data) {
   if (!activeSession()) state.active = state.sessions[0]?.id || null;
   $('#nameGate').classList.toggle('hidden', Boolean(state.name));
   $('#app').classList.toggle('hidden', !state.name);
-  if (state.name) render();
+  if (state.name && JSON.stringify(state) !== previousState) render();
 }
 
 async function apiRequest(path, options = {}) {
@@ -169,6 +171,10 @@ function newSession() {
 
 function render() {
   if (!state.name) return;
+  const messageList = $('#messageList');
+  const previousScrollTop = messageList.scrollTop;
+  const wasNearBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < 80;
+  const sessionChanged = renderedSessionId !== state.active;
   $('#profileName').textContent = state.name;
   $('#profileAvatar').textContent = state.name.slice(0, 2);
   $('#sessionList').innerHTML = state.sessions.map(session => `
@@ -183,8 +189,9 @@ function render() {
     button.onclick = event => { event.stopPropagation(); openRecord(button.dataset.recordId); };
   });
   const messages = activeSession()?.messages || [];
-  $('#messageList').innerHTML = '<div class="day-divider">今天 · PUBLIC ROOM</div>' + messages.map(messageHTML).join('');
-  $('#messageList').scrollTop = $('#messageList').scrollHeight;
+  messageList.innerHTML = '<div class="day-divider">今天 · PUBLIC ROOM</div>' + messages.map(messageHTML).join('');
+  messageList.scrollTop = sessionChanged || wasNearBottom ? messageList.scrollHeight : previousScrollTop;
+  renderedSessionId = state.active;
   $('#modelBadge').textContent = state.config.model || '未设置模型';
 }
 
